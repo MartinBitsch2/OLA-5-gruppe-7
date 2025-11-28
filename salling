@@ -1,0 +1,72 @@
+library(httr)
+library(jsonlite)
+library(dplyr)
+library(tidyr)
+library(lubridate)
+library(ggplot2)
+library(RMariaDB)
+
+api_key <- "SG_APIM_EZQHF5FB2Z4JCZY0M68FT9W22VEDWWGPZFF557JPVY61NFM4SHJG"
+sep <- c(3400, 8900, 4800, 2300, 5700)
+lok <- c("hillerød", "dytmærsken", "nykøbingf", "amagercentret", "svendborg")
+API_kald_tidspunkt <- Sys.time()
+
+for(i in 1:5){
+
+resp <- GET(
+  paste0("https://api.sallinggroup.com/v1/food-waste?zip=",sep[i]),
+  add_headers(Authorization = paste("Bearer", api_key))
+)
+
+data_raw <- content(resp, as = "text", encoding = "UTF-8")
+data_json <- fromJSON(data_raw, flatten = TRUE)
+
+assign(paste0("df", sep[i]), as.data.frame(data_json))
+
+} #looper salling butikker fra ovenstående postnumre fra API-endpointet
+
+#samler føtexbutikker som skal sammenlignes i en liste####
+føtexlist <- list()
+føtexlist["føtex_hillerød_3400"] <- list(df3400[[1]][[2]])
+føtexlist["føtex_dytmærsken_8900"] <- list(df8900[[1]][[1]])
+føtexlist["føtex_nykøbingf_4800"] <- list(df4800[[1]][[1]])
+føtexlist["føtex_amagercentret_2300"] <- list(df2300[[1]][[3]])
+føtexlist["føtex_svendborg_5700"] <- list(df5700[[1]][[1]])
+#####
+
+for(i in 1:5) { 
+unix_start <- as.numeric(as.POSIXct(føtexlist[[i]]$offer.startTime, format="%Y-%m-%dT%H:%M:%OSZ", tz="UTC"))
+unix_end <- as.numeric(as.POSIXct(føtexlist[[i]]$offer.endTime, format="%Y-%m-%dT%H:%M:%OSZ", tz="UTC"))
+unix_total <- (unix_end-unix_start)/3600
+
+føtexlist[[i]] <- cbind(føtexlist[[i]], timer_tilbud_har_været_oppe=unix_total, API_kald_tidspunkt)
+} #binder timer som tilbuddene har været oppe på alle df's
+
+for(j in 1:5){ 
+for(i in c(4,5,9)){
+  føtexlist[[j]][[i]] <- ymd_hms(føtexlist[[j]][[i]], tz = "UTC")
+}
+} #ændrer datovektorer til korrekt format (ikke char-type)
+
+#connecter til workbenchen####
+con <- dbConnect(MariaDB(),
+                 host="localhost",
+                 db="salling",
+                 user="root",
+                 password="Kurt123")
+#####
+
+for (i in 1:5){ #laver tabeller i MySQL
+dbWriteTable(con,paste0("føtex_", lok[i], "_", sep[i]),føtexlist[[i]], append=T)
+} #appender nye API-kald i MySQL
+
+#skriv i logfil
+path <- Sys.getenv("HOME")
+logfilename <- paste0(path, "/log/log_", as.integer(Sys.time()))
+log_open(logfilename)
+log_print("Starting")
+
+log_close()
+
+
+
