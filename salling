@@ -17,12 +17,15 @@ for(i in 1:5){
 resp <- GET(
   paste0("https://api.sallinggroup.com/v1/food-waste?zip=",sep[i]),
   add_headers(Authorization = paste("Bearer", api_key))
+  
 )
 
 data_raw <- content(resp, as = "text", encoding = "UTF-8")
 data_json <- fromJSON(data_raw, flatten = TRUE)
 
 assign(paste0("df", sep[i]), as.data.frame(data_json))
+
+Sys.sleep(1)
 
 } #looper salling butikker fra ovenstående postnumre fra API-endpointet
 
@@ -40,12 +43,16 @@ unix_start <- as.numeric(as.POSIXct(føtexlist[[i]][["offer.startTime"]], format
 unix_end <- as.numeric(as.POSIXct(føtexlist[[i]][["offer.endTime"]], format="%Y-%m-%dT%H:%M:%OSZ", tz="UTC"))
 unix_total <- (unix_end-unix_start)/3600
 
-føtexlist[[i]] <- cbind(føtexlist[[i]], timer_tilbud_har_været_oppe=unix_total, API_kald_tidspunkt)
+føtexlist[[i]] <- cbind(føtexlist[[i]], timer_tilbud_er_oppe=unix_total, API_kald_tidspunkt)
+Sys.sleep(1)
 } #binder timer som tilbuddene har været oppe på alle df's
 
 for(j in 1:5){ 
 for(i in c(4,5,9)){
   føtexlist[[j]][[i]] <- ymd_hms(føtexlist[[j]][[i]], tz = "UTC")
+  
+  Sys.sleep(1)
+  
 }
 } #ændrer datovektorer til korrekt format (ikke char-type)
 
@@ -69,3 +76,4 @@ log_print("Starting")
 
 dbDisconnect(con)
 log_close()
+
